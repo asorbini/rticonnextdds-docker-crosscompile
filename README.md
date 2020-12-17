@@ -15,7 +15,7 @@ sudo apt-get install -y qemu
 ```
 
 Once Qemu is installed, you must enable hooks for it in the Docker daemon. This
-can be achieved using container `hypriot/qemu-register`:
+can be achieved using container [hypriot/qemu-register](https://github.com/hypriot/qemu-register):
 
 ```sh
 docker run --rm --privileged hypriot/qemu-register
