@@ -133,8 +133,3 @@ cd /rti/connextdds-py
 python3 configure.py ${CONNEXTDDS_ARCH}
 pip3 wheel .
 ```
-
-## Other Resources
-
-- [dockcross](https://github.com/dockcross/dockcross) provides containers for an
-  x86_64 host to cross-compile binaries for several different target architectures.

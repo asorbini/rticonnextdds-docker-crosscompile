@@ -25,12 +25,12 @@ RUN DEBIAN_FRONTEND=noninteractive \
    apt-get install cmake
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get install python3-pip
+RUN DEBIAN_FRONTEND=noninteractive \
+    apt-get install sudo
 RUN pip3 install wheel
 RUN pip3 install setuptools
 RUN pip3 install cmake
 RUN pip3 install patchelf-wrapper
-RUN DEBIAN_FRONTEND=noninteractive \
-    apt-get install sudo
 
 RUN mkdir /rti
 COPY FindRTIConnextDDS_rpi.cmake /rti
