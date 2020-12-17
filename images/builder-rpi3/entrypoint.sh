@@ -56,12 +56,57 @@ _builder_cleanup()
 }
 
 ################################################################################
+# Check if we should run the command with a specific UID and GID. If so,
+# make sure that no user nor group exist with the specified value, then
+# create them, and restart this script with the requested user
+################################################################################
+
+if [ -n "${USER_ID}" -a "${USER_ID}" != "${UID}" ]; then
+    # Check that a GID was also specified
+    if [ -z "${GROUP_ID}" ]; then
+        echo "No GROUP_ID specified. Both USER_ID and GROUP_ID must be specified." >&2
+        exit 1
+    fi
+    echo "Running command with UID=${USER_ID} and GID=${GROUP_ID}"
+    if [ -n "${existing_user:=$(getent passwd | cut -d: -f1,3 | grep ${USER_ID})}" ]; then
+        # A user already exists with the specified UID, delete it
+        userdel -f $(echo ${existing_user} | cut -d: -f1)
+    fi
+    if [ -n "${existing_group:=$(getent group | cut -d: -f1,3 | grep ${GROUP_ID})}" ]; then
+        # A group already exists with the specified GID, delete it
+        groupdel $(echo ${existing_group} | cut -d: -f1)
+    fi
+    # Add a new group with the requested GID
+    groupadd -g ${GROUP_ID} rti
+    # Add a new user with the requested UID
+    useradd -l -u ${USER_ID} -g rti -d /rti -s /bin/bash dsuser
+    chown dsuser:rti /rti /rti/ndds /rti/connextdds-py
+    # save current environment (bar USER, UID, and HOME)
+    rm -f /rti/.bashrc-env
+    echo "export \\" >> /rti/.bashrc-env
+    env | grep -vE "^(USER|UID|HOME)=" | sed -r "s/^(.*)$/\1 \\\/g" >> /rti/.bashrc-env
+    echo "_RELOADED=y" >> /rti/.bashrc-env
+    # printf "%s\n" "_RELOADED=y /entrypoint.sh $@" >> /rti/.bashrc-rti
+    if [ ! -f /rti/.bashrc ] || ! grep "\. /rti/\.bashrc-rti" /rti/.bashrc 2>/dev/null; then
+        (cat <<EOF
+. /rti/.bashrc-env
+EOF
+) >> /rti/.profile
+    fi
+
+    sudo -i -u dsuser /bin/bash -c "/entrypoint.sh $@"
+    rc=$?
+    # _builder_cleanup
+    exit ${rc}
+fi
+
+################################################################################
 # Run entrypoint script
 ################################################################################
 
 set -e
 
-echo "rticonnextdds-builder starting up..."
+echo "rticonnextdds-builder starting up as user ${USER}..."
 
 # Load custom environment and init scripts, if specified
 if [ -n "${ENVRC}" ]; then
@@ -121,14 +166,20 @@ cd /rti
 # Trap SIGTERM to cleanup things when container is stopped
 trap _builder_cleanup SIGTERM
 
+# Generate a runner script so that we may invoke it from
+# a custom user if needed
 # Intercept and run default command or a custom one (if specified)
 if [ "$@" = "__default__" ]; then
     echo "Spawning a shell..."
     bash
+    rc=$?
 else
     echo "Running custom command: '$@'"
     exec "$@"
+    rc=$?
 fi
 
 # Clean things up and restore original files
 _builder_cleanup
+
+exit ${rc}

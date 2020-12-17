@@ -37,25 +37,41 @@ docker build -t rticonnextdds-builder-rpi3 \
 
 ```
 
-All images expect RTI Connext DDS to be mounted via volume `/rti/ndds`, and
-environment variable `CONNEXTDDS_ARCH` to specify the RTI Connext DDS target
-to use (e.g. `"armv7Linuxgcc7.3.0"`).
+All images expect an RTI Connext DDS installation to be mounted via volume
+`/rti/ndds`. The target architecture can be specified via environment variable
+`CONNEXTDDS_ARCH` (passed via `-e CONNEXTDDS_ARCH=<arch>`), or a default value
+for the image will be used.
 
 You can use the `--rm` option to automatically delete the container after
 completion, e.g.:
 
 ```sh
-# Start an ephemeral container to build connextdds-py for
-# Raspberry Pi using target armv7Linuxgcc7.3.0 
+# Mount the current directory to build binaries for Raspberry Pi 3
 docker run --rm -ti \
            -v ${NDDSHOME}:/rti/ndds \
-           -v connextdds-py:/rti/connextdds-py \
-           -e CONNEXTDDS_ARCH=armv7Linuxgcc7.3.0 \
+           -v $(pwd):/work \
            rticonnextdds-builder-rpi3
 ```
 
 **Please be aware that compilation in the emulated environments will be
 extremely slow (a few orders of magnitude slower than native builds).**
+
+By default, the containers run commands as root, and generated files will have
+root-level permissions in the host. If you want files to be generated with the
+correct permissions you should use variables `USER_ID` and `GROUP_ID` to
+specify the user and group IDs to use inside the container.
+
+For example, to match the current shell user and group (assumed to have the
+same name as the user):
+
+```sh
+docker run --rm -ti \
+           -v ${NDDSHOME}:/rti/ndds \
+           -v $(pwd):/work \
+           -e USER_ID=$(id -u $(whoami)) \
+           -e GROUP_ID=$(getent group $(whoami) | cut -d: -f3) \
+           rticonnextdds-builder-rpi3
+```
 
 ### rticonnextdds-builder-rpi3
 
@@ -106,7 +122,6 @@ git clone --recurse-submodules https://github.com/rticommunity/connextdds-py.git
 docker run --rm -ti \
              -v ${NDDSHOME}:/rti/ndds \
              -v connextdds-py:/rti/connextdds-py \
-             -e CONNEXTDDS_ARCH=armv7Linuxgcc7.3.0 \
              rticonnextdds-builder-rpi3
 
 # Inside the container, enter connextdds-py/, configure the project, and
@@ -118,3 +133,8 @@ cd /rti/connextdds-py
 python3 configure.py ${CONNEXTDDS_ARCH}
 pip3 wheel .
 ```
+
+## Other Resources
+
+- [dockcross](https://github.com/dockcross/dockcross) provides containers for an
+  x86_64 host to cross-compile binaries for several different target architectures.
