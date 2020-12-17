@@ -59,9 +59,9 @@ extremely slow (a few orders of magnitude slower than native builds).**
 
 ### rticonnextdds-builder-rpi3
 
-This image is based on `balenalib/raspberrypi3-debian:build`. It provides an
-`armv7` build environment running Raspbian Buster that can be used to build
-applications for Raspberry Pi 3.
+This image is based on [balenalib/raspberrypi3-debian:build](https://hub.docker.com/r/balenalib/raspberrypi3-debian).
+It provides an `armv7` build environment running Raspbian Buster that can be
+used to build applications for Raspberry Pi 3.
 
 The entry point script supports the specification of custom behavior via the
 following environment variables:
