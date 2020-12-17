@@ -32,9 +32,10 @@ The repository contains the following images:
 Images can be built using the `docker build` command, e.g.:
 
 ```sh
+cd rticonnextdds-docker-crosscompile/
 docker build -t rticonnextdds-builder-rpi3 \
-                rticonnextdds-docker-crosscompile/images/builder-rpi3
-
+             -f images/builder-rpi3 \
+             .
 ```
 
 All images expect an RTI Connext DDS installation to be mounted via volume
@@ -72,6 +73,11 @@ docker run --rm -ti \
            -e GROUP_ID=$(getent group $(whoami) | cut -d: -f3) \
            rticonnextdds-builder-rpi3
 ```
+
+This will spawn a shell for user `dsuser`, member of group `rti`, with home
+directory set to `/rti`. If you prefer to use different user, group, and/or home
+directory, you can specify custom values via variables `HOST_USER`, `HOST_GROUP`,
+and `HOME_DIR` respectively.
 
 ### rticonnextdds-builder-rpi3
 

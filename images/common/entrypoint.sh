@@ -37,7 +37,6 @@ _restore_file()
 
 _builder_backup()
 {
-    echo "Backing up original files..."
     _backup_file mv ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake
     if [ -n "${CONNEXTDDSPY}" ]; then
         _backup_file cp /rti/connextdds-py/modules/CMakeLists.txt
@@ -49,10 +48,56 @@ _builder_cleanup()
 {
     # Restore original FindRTIConnextDDS.cmake
     _restore_file ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake
-    echo "Restored original FindRTIConnextDDS.cmake"
-
     _restore_file /rti/connextdds-py/modules/CMakeLists.txt
-    echo "Restored original connextdds-py dependencies"
+}
+
+_detect_connextdds()
+{
+    # Check that an RTI Connext DDS target was specified
+    if [ -z "${CONNEXTDDS_ARCH}" ]; then
+        echo "ERROR: no RTI Connext DDS target specified." >&2
+        echo "Use -e CONNEXTDDS_ARCH=<arch> when creating the container to specify a value." >&2
+        exit 1
+    fi
+
+    # Check that we have a valid NDDSHOME by trying to load the RTI Connext DDS
+    # into the environment using rtisetenv_*.bash
+    if ! source /rti/ndds/resource/scripts/rtisetenv_${CONNEXTDDS_ARCH}.bash; then
+    echo "ERROR: failed to load RTI Connext DDS [${CONNEXTDDS_ARCH}] from /rti/ndds."  >&2
+    echo "Use '-v \${NDDSHOME}:/rti/ndds' when creating the container to mount the required volume." >&2
+    exit 1
+    fi
+}
+
+_detect_connextddspy()
+{
+    # Check if connextdds-py has been mounted
+    if [ -f /rti/connextdds-py/modules/CMakeLists.txt \
+        -o -f /rti/connextdds-py/templates/pyproject.toml ]; then
+        echo "Found connextdds-py under /rti/connextdds-py"
+        CONNEXTDDSPY=connextdds-py-enabled
+    fi
+}
+
+_patch_rpi()
+{
+    # Replace FindRTIConnextDDS.cmake with the modified version for armv7.
+    # We will restore it once the command exits.
+    echo "Installing FindRTIConnextDDS.cmake for Raspberry Pi..."
+    cp /rti/FindRTIConnextDDS_rpi.cmake \
+    ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake
+
+    # If connextdds-py is mounted, updated the CMake dependencies to require
+    # CMake <=3.14, since the official binaries for CMake 3.15-3.18 don't work
+    # under qemu/arm, and they would require to be built from source using a
+    # special flag (see https://gitlab.kitware.com/cmake/cmake/-/issues/20568)
+    if [ -n "${CONNEXTDDSPY}" ]; then
+        echo "Lowering connextdds-py dependencies to CMake 3.14..."
+        sed -ir 's/^cmake_minimum_required\(VERSION 3.1[5-8]\)$/cmake_minimum_required(VERSION 3.14)/' \
+                /rti/connextdds-py/modules/CMakeLists.txt
+        sed -ir 's/cmake >3\.15,<=3.18\.1/cmake >=3.14,<3.15/' \
+                /rti/connextdds-py/templates/pyproject.toml
+    fi
 }
 
 ################################################################################
@@ -67,7 +112,7 @@ if [ -n "${USER_ID}" -a "${USER_ID}" != "${UID}" ]; then
         echo "No GROUP_ID specified. Both USER_ID and GROUP_ID must be specified." >&2
         exit 1
     fi
-    echo "Running command with UID=${USER_ID} and GID=${GROUP_ID}"
+    echo "Running command as ${HOST_USER:=dsuser}:${HOST_GROUP:=rti} (${USER_ID}:${GROUP_ID}:${HOME_DIR:=/rti})"
     if [ -n "${existing_user:=$(getent passwd | cut -d: -f1,3 | grep ${USER_ID})}" ]; then
         # A user already exists with the specified UID, delete it
         userdel -f $(echo ${existing_user} | cut -d: -f1)
@@ -77,26 +122,22 @@ if [ -n "${USER_ID}" -a "${USER_ID}" != "${UID}" ]; then
         groupdel $(echo ${existing_group} | cut -d: -f1)
     fi
     # Add a new group with the requested GID
-    groupadd -g ${GROUP_ID} rti
+    groupadd -g ${GROUP_ID} ${HOST_GROUP}
     # Add a new user with the requested UID
-    useradd -l -u ${USER_ID} -g rti -d /rti -s /bin/bash dsuser
-    chown dsuser:rti /rti /rti/ndds /rti/connextdds-py
+    useradd -l -u ${USER_ID} -g ${HOST_GROUP} -d ${HOME_DIR} -s /bin/bash ${HOST_USER}
+    chown ${HOST_USER}:${HOST_GROUP} ${HOME_DIR} ${HOME_DIR}/*
     # save current environment (bar USER, UID, and HOME)
-    rm -f /rti/.bashrc-env
-    echo "export \\" >> /rti/.bashrc-env
-    env | grep -vE "^(USER|UID|HOME)=" | sed -r "s/^(.*)$/\1 \\\/g" >> /rti/.bashrc-env
-    echo "_RELOADED=y" >> /rti/.bashrc-env
-    # printf "%s\n" "_RELOADED=y /entrypoint.sh $@" >> /rti/.bashrc-rti
-    if [ ! -f /rti/.bashrc ] || ! grep "\. /rti/\.bashrc-rti" /rti/.bashrc 2>/dev/null; then
-        (cat <<EOF
-. /rti/.bashrc-env
-EOF
-) >> /rti/.profile
+    rm -f ${HOME_DIR}/.bashenv
+    echo "export \\" >> ${HOME_DIR}/.bashenv
+    env | grep -vE "^(USER|UID|HOME)=" | sed -r "s/^(.*)$/\1 \\\/g" >> ${HOME_DIR}/.bashenv
+    echo "_RELOADED=y" >> ${HOME_DIR}/.bashenv
+    if [ ! -f ${HOME_DIR}/.profile ] ||
+       ! grep "\. ${HOME_DIR}/\.bashenv" ${HOME_DIR}/.profile 2>/dev/null; then
+       printf "%s\n" ". ${HOME_DIR}/.bashenv" >> ${HOME_DIR}/.profile
     fi
 
-    sudo -i -u dsuser /bin/bash -c "/entrypoint.sh $@"
+    sudo -i -u ${HOST_USER} /bin/bash -c "/entrypoint.sh $@"
     rc=$?
-    # _builder_cleanup
     exit ${rc}
 fi
 
@@ -118,47 +159,20 @@ if [ -n "${INIT}" ]; then
     ${INIT}
 fi
 
-# Check that an RTI Connext DDS target was specified
-if [ -z "${CONNEXTDDS_ARCH}" ]; then
-    echo "ERROR: no RTI Connext DDS target specified." >&2
-    echo "Use -e CONNEXTDDS_ARCH=<arch> when creating the container to specify a value." >&2
-    exit 1
-fi
+_detect_connextdds
 
-# Check that we have a valid NDDSHOME by trying to load the RTI Connext DDS
-# into the environment using rtisetenv_*.bash
-if ! source /rti/ndds/resource/scripts/rtisetenv_${CONNEXTDDS_ARCH}.bash; then
-   echo "ERROR: failed to load RTI Connext DDS [${CONNEXTDDS_ARCH}] from /rti/ndds."  >&2
-   echo "Use '-v \${NDDSHOME}:/rti/ndds' when creating the container to mount the required volume." >&2
-   exit 1
-fi
-
-# Check if connextdds-py has been mounted
-if [ -f /rti/connextdds-py/modules/CMakeLists.txt \
-     -o -f /rti/connextdds-py/templates/pyproject.toml ]; then
-    echo "Found connextdds-py under /rti/connextdds-py"
-    CONNEXTDDSPY=connextdds-py-enabled
-fi
+_detect_connextddspy
 
 _builder_backup
 
-# Replace FindRTIConnextDDS.cmake with the modified version for armv7.
-# We will restore it once the command exits.
-echo "Installing FindRTIConnextDDS.cmake for Raspberry Pi..."
-cp /rti/FindRTIConnextDDS_rpi.cmake \
-   ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake
-
-# If connextdds-py is mounted, updated the CMake dependencies to require
-# CMake <=3.14, since the official binaries for CMake 3.15-3.18 don't work
-# under qemu/arm, and they would require to be built from source using a
-# special flag (see https://gitlab.kitware.com/cmake/cmake/-/issues/20568)
-if [ -n "${CONNEXTDDSPY}" ]; then
-    echo "Lowering connextdds-py dependencies to CMake 3.14..."
-    sed -ir 's/^cmake_minimum_required\(VERSION 3.1[5-8]\)$/cmake_minimum_required(VERSION 3.14)/' \
-            /rti/connextdds-py/modules/CMakeLists.txt
-    sed -ir 's/cmake >3\.15,<=3.18\.1/cmake >=3.14,<3.15/' \
-            /rti/connextdds-py/templates/pyproject.toml
-fi
+# Apply architecture-specific "patches"
+case $(uname -m) in
+    armv7l)
+        _patch_rpi
+        ;;
+    *)
+        ::
+esac
 
 # Enter base working directory
 cd /rti

@@ -27,19 +27,20 @@ RUN DEBIAN_FRONTEND=noninteractive \
     apt-get install python3-pip
 RUN DEBIAN_FRONTEND=noninteractive \
     apt-get install sudo
+
 RUN pip3 install wheel
 RUN pip3 install setuptools
 RUN pip3 install cmake
 RUN pip3 install patchelf-wrapper
 
 RUN mkdir /rti
-COPY FindRTIConnextDDS_rpi.cmake /rti
+COPY images/common/FindRTIConnextDDS_rpi.cmake /rti
 VOLUME [ "/rti/ndds" ]
 VOLUME [ "/rti/connextdds-py" ]
 
 ENV CONNEXTDDS_ARCH=armv7Linuxgcc7.3.0
 
-COPY entrypoint.sh /
+COPY images/common/entrypoint.sh /
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT [ "/entrypoint.sh" ]
 CMD ["__default__"]
