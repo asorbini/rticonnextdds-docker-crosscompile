@@ -16,7 +16,7 @@
 ################################################################################
 
 ################################################################################
-# Helper functions to make copies of modified files and to restore them on exit
+# General helper functions
 ################################################################################
 
 _bkp_pfx=.bkp-docker-rpi
@@ -35,21 +35,9 @@ _restore_file()
     fi
 }
 
-_builder_backup()
-{
-    _backup_file mv ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake
-    if [ -n "${CONNEXTDDSPY}" ]; then
-        _backup_file cp /rti/connextdds-py/modules/CMakeLists.txt
-        _backup_file cp /rti/connextdds-py/templates/pyproject.toml
-    fi
-}
-
-_builder_cleanup()
-{
-    # Restore original FindRTIConnextDDS.cmake
-    _restore_file ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake
-    _restore_file /rti/connextdds-py/modules/CMakeLists.txt
-}
+################################################################################
+# Connext DDS Helpers
+################################################################################
 
 _detect_connextdds()
 {
@@ -79,13 +67,35 @@ _detect_connextddspy()
     fi
 }
 
+################################################################################
+# Raspberry Pi Helpers
+################################################################################
+
+_builder_backup_rpi()
+{
+    _backup_file mv ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake
+    if [ -n "${CONNEXTDDSPY}" ]; then
+        _backup_file cp /rti/connextdds-py/modules/CMakeLists.txt
+        _backup_file cp /rti/connextdds-py/templates/pyproject.toml
+    fi
+}
+
+_builder_cleanup_rpi()
+{
+    _restore_file ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake
+    _restore_file /rti/connextdds-py/modules/CMakeLists.txt
+    _restore_file /rti/connextdds-py/templates/pyproject.toml
+}
+
 _patch_rpi()
 {
+    _builder_backup_rpi
+
     # Replace FindRTIConnextDDS.cmake with the modified version for armv7.
     # We will restore it once the command exits.
     echo "Installing FindRTIConnextDDS.cmake for Raspberry Pi..."
     cp /rti/FindRTIConnextDDS_rpi.cmake \
-    ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake
+       ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake
 
     # If connextdds-py is mounted, updated the CMake dependencies to require
     # CMake <=3.14, since the official binaries for CMake 3.15-3.18 don't work
@@ -98,6 +108,8 @@ _patch_rpi()
         sed -ir 's/cmake >3\.15,<=3.18\.1/cmake >=3.14,<3.15/' \
                 /rti/connextdds-py/templates/pyproject.toml
     fi
+
+    CLEANUP=_builder_cleanup_rpi
 }
 
 ################################################################################
@@ -163,8 +175,6 @@ _detect_connextdds
 
 _detect_connextddspy
 
-_builder_backup
-
 # Apply architecture-specific "patches"
 case $(uname -m) in
     armv7l)
@@ -174,11 +184,11 @@ case $(uname -m) in
         ::
 esac
 
+# Trap SIGTERM to cleanup things when container is stopped
+[ -z "${CLEANUP}" ] || trap ${CLEANUP} SIGTERM
+
 # Enter base working directory
 cd /rti
-
-# Trap SIGTERM to cleanup things when container is stopped
-trap _builder_cleanup SIGTERM
 
 # Generate a runner script so that we may invoke it from
 # a custom user if needed
@@ -193,7 +203,7 @@ else
     rc=$?
 fi
 
-# Clean things up and restore original files
-_builder_cleanup
+# Clean things up and restore original files if needed
+[ -z "${CLEANUP}" ] || ${CLEANUP}
 
 exit ${rc}
