@@ -16,7 +16,7 @@
 ################################################################################
 set -e
 
-printf "connextdds-builder starting up...\n"
+echo "rticonnextdds-builder starting up..."
 
 # Load a custom init script if specified
 if [ -n "${ENVRC}" ]; then
@@ -38,13 +38,13 @@ fi
 # Check that we have a valid NDDSHOME by trying to load the rtisetenv script
 if ! source /rti/ndds/resource/scripts/rtisetenv_${CONNEXTDDS_ARCH}.bash; then
    echo "ERROR: failed to load RTI Connext DDS [${CONNEXTDDS_ARCH}] from /rti/ndds."  >&2
-   echo "Use -v /rti/ndds=\${NDDSHOME} when creating the container to mount the required volume." >&2
+   echo "Use '-v \${NDDSHOME}:/rti/ndds' when creating the container to mount the required volume." >&2
    exit 1
 fi
 
 bkp_pfx=.bkp-docker-rpi
 
-# Replace FindRTIConnextDDS.cmake with the modified version for arm.
+# Replace FindRTIConnextDDS.cmake with the modified version for armv7.
 # We will restore it once the command exits.
 echo "Installing FindRTIConnextDDS.cmake for Raspberry Pi..."
 if [ ! -f ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake${bkp_pfx} ]; then
@@ -71,7 +71,7 @@ if [ -f /rti/connextdds-py/modules/CMakeLists.txt \
             /rti/connextdds-py/templates/pyproject.toml
 fi
 
-cleanup()
+_builder_cleanup()
 {
     # Restore original FindRTIConnextDDS.cmake
     if [ -f ${NDDSHOME}/resource/cmake/FindRTIConnextDDS.cmake${bkp_pfx} ]; then
@@ -94,10 +94,10 @@ cleanup()
 # Enter base working directory
 cd /rti
 
-# Trap SIGTERM to cleanup things upon stop
-trap 'cleanup' SIGTERM
+# Trap SIGTERM to cleanup things when container is stopped
+trap _builder_cleanup SIGTERM
 
-# Intercept and run default command
+# Intercept and run default command or a custom one (if specified)
 if [ "$@" = "__default__" ]; then
     echo "Spawning a shell..."
     bash
@@ -107,4 +107,4 @@ else
 fi
 
 # Clean things up and restore original files
-cleanup
+_builder_cleanup
