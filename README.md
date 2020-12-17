@@ -39,7 +39,10 @@ docker build -t rticonnextdds-builder-rpi3 \
 
 All images expect RTI Connext DDS to be mounted via volume `/rti/ndds`, and
 environment variable `CONNEXTDDS_ARCH` to specify the RTI Connext DDS target
-to use (e.g. `"armv7Linuxgcc7.3.0"`):
+to use (e.g. `"armv7Linuxgcc7.3.0"`).
+
+You can use the `--rm` option to automatically delete the container after
+completion, e.g.:
 
 ```sh
 # Start an ephemeral container to build connextdds-py for
@@ -51,19 +54,22 @@ docker run --rm -ti \
            rticonnextdds-builder-rpi3
 ```
 
+**Please be aware that compilation in the emulated environments will be
+extremely slow (a few orders of magnitude slower than native builds).**
+
 ### rticonnextdds-builder-rpi3
 
 This image is based on `balenalib/raspberrypi3-debian:build`. It provides an
 `armv7` build environment running Raspbian Buster that can be used to build
 applications for Raspberry Pi 3.
 
-The image's entry point supports the specification of custom behavior via the
+The entry point script supports the specification of custom behavior via the
 following environment variables:
 
 | Variable | Description |
 |----------|-------------|
 |`ENVRC`|Custom environment script that will be sourced on start up.|
-|`INIT`|Custom initialization script that will be runned on start up (after `ENVRC`).|
+|`INIT`|Custom initialization script that will be run on start up (after `ENVRC`).|
 
 The entry point script will copy a modified version of `FindRTIConnextDDS.cmake`
 into the mounted `NDDSHOME`, replacing the stock version with one modified to
@@ -80,8 +86,8 @@ The original configuration will be restored on exit.
 The need for this change stems from [a problem with stock builds of CMake](https://gitlab.kitware.com/cmake/cmake/-/issues/20568)
 between versions 3.15 and 3.18 that prevents them from working under emulated arm
 architectures.
-The only solution is to rebuild CMake with a certaion compilation flag, so a
-version earlier than 3.15 is used to same time.
+The only solution is to rebuild CMake with `-D_FILE_OFFSET_BITS=64`, so a
+version earlier than 3.15 is used instead to same time.
 
 ## Usage Examples
 
