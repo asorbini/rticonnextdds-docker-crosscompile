@@ -109,7 +109,11 @@ docker run --rm -ti \
              -e CONNEXTDDS_ARCH=armv7Linuxgcc7.3.0 \
              rticonnextdds-builder-rpi3
 
-# Inside the container
+# Inside the container, enter connextdds-py/, configure the project, and
+# build a wheel. This will likely take several hours. You can increase
+# the number of parallel jobs by passing -j<n> to configure.py, keeping
+# in mind that the compilation is memory-heavy and you might run out of memory
+# if too many jobs are spawned concurrently.
 cd /rti/connextdds-py
 python3 configure.py ${CONNEXTDDS_ARCH}
 pip3 wheel .
